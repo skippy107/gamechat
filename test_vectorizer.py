@@ -43,7 +43,7 @@ try:
             #await vectorizer.vectorize_json_file("data/sample_items.json")
             
             print("\nTesting search...")
-            results = await vectorizer.search("puzzle game", min_relevance_score=0.5)
+            results = await vectorizer.search("bowling game", min_relevance_score=0.5)
             
             print(f"\nSearch results:")
             for i, result in enumerate(results, 1):

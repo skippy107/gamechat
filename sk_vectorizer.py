@@ -18,7 +18,7 @@ from semantic_kernel.connectors.ai.open_ai import OpenAITextEmbedding
 from semantic_kernel.connectors.memory.chroma import ChromaMemoryStore
 
 
-class MemoryRecord(NamedTuple):
+class SearchResult(NamedTuple):
     """A simple record for memory search results."""
     id: str
     text: str
@@ -51,8 +51,9 @@ class SKJsonVectorizer:
         self.kernel = sk.Kernel()
         
         # Create embedding service
+        # Use the latest OpenAI embedding model for better performance
         self.embedding_service = OpenAITextEmbedding(
-            ai_model_id="text-embedding-3-small",
+            ai_model_id="text-embedding-3-small",  # Latest model, replacing the older text-embedding-ada-002
             api_key=self.api_key
         )
         
@@ -90,6 +91,9 @@ class SKJsonVectorizer:
     async def vectorize_json_file(self, json_file_path: str) -> None:
         """
         Read items from a JSON file, vectorize their descriptions, and store in Chroma.
+        Supports multiple JSON formats:
+        - List of items: [{"id": "...", "name": "...", "description": "..."}, ...]
+        - Nested structure: {"gameList": {"game": [...]}}
 
         Args:
             json_file_path: Path to the JSON file containing the items
@@ -98,63 +102,168 @@ class SKJsonVectorizer:
         await self._ensure_collection_exists()
         
         # Read JSON file
-        with open(json_file_path, 'r') as file:
-            items = json.load(file)
+        with open(json_file_path, 'r',encoding='utf-8') as file:
+            data = json.load(file)
+        
+        # Determine the format and extract items
+        if isinstance(data, list):
+            # Simple list format
+            items = data
+        elif isinstance(data, dict) and 'gameList' in data and 'game' in data['gameList']:
+            # Nested format with gameList.game structure
+            items = data['gameList']['game']
+        else:
+            # Try to find any list in the data
+            found = False
+            for key, value in data.items():
+                if isinstance(value, list) and len(value) > 0:
+                    items = value
+                    found = True
+                    print(f"Found items list in key: '{key}'")
+                    break
+                elif isinstance(value, dict):
+                    for subkey, subvalue in value.items():
+                        if isinstance(subvalue, list) and len(subvalue) > 0:
+                            items = subvalue
+                            found = True
+                            print(f"Found items list in nested key: '{key}.{subkey}'")
+                            break
+                    if found:
+                        break
+            
+            if not found:
+                raise ValueError(f"Unsupported JSON format in {json_file_path}. Expected a list of items or a nested structure with 'gameList.game'.")
+        
+        print(f"Found {len(items)} items in JSON file")
         
         # Vectorize items
-        await self.vectorize_items(items['gameList']['game'])
+        await self.vectorize_items(items)
     
     async def vectorize_items(self, items: List[Dict[str, Any]]) -> None:
         """
         Vectorize the descriptions of a list of items and store them in Chroma.
+        Processes items in batches of 100 for improved efficiency.
+        Supports multiple field name formats:
+        - name/desc: Common in game data
+        - name/description: Common in product data
+        - id field is optional and will be generated if not present
 
         Args:
-            items: List of item dictionaries, each containing a 'description' key
+            items: List of item dictionaries, each containing name and description fields
         """
         print(f"Vectorizing {len(items)} items...")
         
+        # Import MemoryRecord at the module level to avoid repeated imports
+        from semantic_kernel.memory.memory_record import MemoryRecord
+        
+        # Filter valid items (those with both name and description)
+        valid_items = []
         for item in items:
-            # Check if item has required fields
-            if 'name' not in item or 'desc' not in item:
-                print(f"Skipping item: Missing required fields (name or description)")
+            # Check for name field
+            if 'name' not in item:
+                print(f"Skipping item: Missing required field 'name'")
                 continue
-            if item['desc'] and item['desc'] != '' and item['name'] and item['name'] != '':
-                # Create a text representation that includes both name and description if available
-                text = f"{item['name']}: {item['desc']}"
                 
-                # Generate embedding for the text
-                embeddings = await self.embedding_service.generate_embeddings([text])
+            # Check for description field (could be 'desc' or 'description')
+            description = None
+            if 'desc' in item and item['desc']:
+                description = item['desc']
+            elif 'description' in item and item['description']:
+                description = item['description']
                 
-                # Create a MemoryRecord
-                from semantic_kernel.memory.memory_record import MemoryRecord
+            if not description:
+                print(f"Skipping item: Missing or empty description field")
+                continue
+                
+            # Ensure item has an ID
+            if 'id' not in item:
+                item['id'] = str(uuid4())
+                
+            # Create a standardized item with consistent field names
+            standardized_item = {
+                'id': item['id'],
+                'name': item['name'],
+                'description': description,
+                'metadata': {
+                    key: value for key, value in item.items() 
+                    if key not in ['id', 'name', 'desc', 'description']
+                }
+            }
+            
+            valid_items.append(standardized_item)
+        
+        # Process items in batches of 100
+        batch_size = 100
+        total_batches = (len(valid_items) + batch_size - 1) // batch_size  # Ceiling division
+        
+        for batch_index in range(total_batches):
+            start_idx = batch_index * batch_size
+            end_idx = min(start_idx + batch_size, len(valid_items))
+            batch_items = valid_items[start_idx:end_idx]
+            
+            print(f"Processing batch {batch_index + 1}/{total_batches} ({len(batch_items)} items)...")
+            
+            # Create text representations for all items in the batch
+            texts = []
+            for item in batch_items:
+                text = f"{item['name']}: {item['description']}"
+                texts.append(text)
+            
+            # Generate embeddings for all texts in the batch in a single API call
+            embeddings = await self.embedding_service.generate_embeddings(texts)
+            
+            # Create MemoryRecord objects for each item
+            records = []
+            for i, item in enumerate(batch_items):
+                # Convert metadata to JSON string
+                metadata = {
+                    "id": item['id'],
+                    "name": item['name'],
+                }
+                
+                # Add any additional metadata
+                if 'metadata' in item and isinstance(item['metadata'], dict):
+                    metadata.update(item['metadata'])
+                
                 record = MemoryRecord(
-                    id=str(uuid4()),
-                    text=text,
-                    embedding=embeddings[0],
-                    description=item.get('name', 'None'),
-                    additional_metadata=json.dumps({
-                        "name": item.get('name', 'None'),
-                        "genre": item.get('genre', 'None'),
-                        "players": item.get('players', 'None'),
-                        "publisher": item.get('publisher', 'None'),
-                        "developer": item.get('developer', 'None'),
-                        "releasedate": item.get('releasedate', 'None'),
-                    }),
+                    id=item['id'],  # Use the item's ID instead of generating a new one
+                    text=texts[i],
+                    embedding=embeddings[i],
+                    description=item['name'],
+                    additional_metadata=json.dumps(metadata),
                     external_source_name="json_file",
                     is_reference=False
                 )
-                
-                # Store the record in Chroma
-                await self.memory_store.upsert(
+                records.append(record)
+            
+            # Store all records in the batch in Chroma at once
+            try:
+                # Batch upsert all records
+                await self.memory_store.upsert_batch(
                     collection_name=self.collection_name,
-                    record=record
+                    records=records
                 )
+                print(f"Vectorized batch of {len(records)} items")
                 
-                print(f"Vectorized item: {item['name']}")
+                # Print a few sample items for visibility
+                sample_size = min(5, len(records))
+                for i in range(sample_size):
+                    print(f"  - {records[i].description}")
+                if len(records) > sample_size:
+                    print(f"  - ... and {len(records) - sample_size} more items")
+            except AttributeError:
+                # Fallback if upsert_batch is not available
+                print("Batch upsert not available, falling back to individual upserts")
+                for record in records:
+                    await self.memory_store.upsert(
+                        collection_name=self.collection_name,
+                        record=record
+                    )
+                    print(f"Vectorized item: {record.description}")
         
         print("Vectorization complete!")
 
-    async def search(self, query: str, limit: int = 5, min_relevance_score: float = 0.7) -> List[MemoryRecord]:
+    async def search(self, query: str, limit: int = 5, min_relevance_score: float = 0.7) -> List[SearchResult]:
         """
         Search the vector database for items similar to the query.
 
@@ -164,7 +273,7 @@ class SKJsonVectorizer:
             min_relevance_score: Minimum relevance score (0-1) for results
 
         Returns:
-            List of search results
+            List of SearchResult objects containing the search results
         """
         # Generate embedding for the query
         query_embedding = await self.embedding_service.generate_embeddings([query])
@@ -177,17 +286,17 @@ class SKJsonVectorizer:
             min_relevance_score=min_relevance_score
         )
         
-        # Convert results to our MemoryRecord objects
-        memory_records = []
+        # Convert results to our SearchResult objects
+        search_results = []
         for record, score in results:
-            memory_record = MemoryRecord(
+            search_result = SearchResult(
                 id=record.id,
                 text=record.text,
                 relevance=score
             )
-            memory_records.append(memory_record)
+            search_results.append(search_result)
         
-        return memory_records
+        return search_results
 
 
 async def main():
@@ -209,7 +318,7 @@ async def main():
         vectorizer = SKJsonVectorizer(collection_name="gdata")
         
         # Check if JSON file exists
-        json_file_path = "data/arcade/gamelist_test.json"
+        json_file_path = "data/arcade/gamelist.json"
         if not os.path.exists(json_file_path):
             print(f"ERROR: JSON file not found at {json_file_path}")
             return
@@ -219,9 +328,9 @@ async def main():
         await vectorizer.vectorize_json_file(json_file_path)
         
         # Perform a sample search
-        query = "a puzzle game"
+        query = "bowling game"
         print(f"Searching for: '{query}'...")
-        results = await vectorizer.search(query,min_relevance_score=0.5)
+        results = await vectorizer.search(query, limit=5, min_relevance_score=0.5)
         
         print(f"\nSearch results for: '{query}'")
         if not results:
