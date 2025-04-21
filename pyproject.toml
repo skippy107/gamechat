@@ -1,0 +1,32 @@
+[project]
+name = "gchat"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Your Name",email = "you@example.com"}
+]
+readme = "README.md"
+package-mode = "false"
+requires-python = ">=3.13,<4.0.0"
+dependencies = [
+    "openai (>=1.75.0,<2.0.0)",
+    "load-dotenv (>=0.1.0,<0.2.0)",
+    "langchain (>=0.3.23,<0.4.0)",
+    "langchain-openai (>=0.3.14,<0.4.0)",
+    "langchain-community (>=0.3.21,<0.4.0)",
+    "xmltodict (>=0.14.2,<0.15.0)",
+    "langchain-chroma (>=0.2.3,<0.3.0)",
+    "semantic-kernel == 1.23"
+    #"semantic-kernel (>=1.28.1,<2.0.0)"
+    "pandas (>=2.2.3,<3.0.0)"
+]
+
+[tool.poetry]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.5"
+ipykernel = "^6.29.5"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
