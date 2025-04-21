@@ -30,7 +30,7 @@ try:
                 os.environ['OPENAI_API_KEY'] = 'dummy_key_for_testing'
                 print("Using dummy API key for testing")
             
-            vectorizer = SKJsonVectorizer(collection_name="test_collection")
+            vectorizer = SKJsonVectorizer(collection_name="gdata")
             print("Vectorizer instance created successfully!")
             
             # Don't proceed with actual API calls if using dummy key
@@ -39,11 +39,11 @@ try:
                 print("To run the full test, please set your OPENAI_API_KEY environment variable.")
                 return
             
-            print("\nTesting vectorize_json_file...")
-            await vectorizer.vectorize_json_file("data/sample_items.json")
+            #print("\nTesting vectorize_json_file...")
+            #await vectorizer.vectorize_json_file("data/sample_items.json")
             
             print("\nTesting search...")
-            results = await vectorizer.search("sun protection")
+            results = await vectorizer.search("puzzle game", min_relevance_score=0.5)
             
             print(f"\nSearch results:")
             for i, result in enumerate(results, 1):

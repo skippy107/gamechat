@@ -3,14 +3,14 @@ import json
 
 import xmltodict
 
-def parse_xml_to_dict(xml_file):
+def parse_xml_to_dict(xml_path):
     """Parse an XML file and convert it to a dictionary."""
 
     try:
-       the_dict = xmltodict.parse(open('data/arcade/gamelist.xml',encoding="utf-8").read()) 
+       the_dict = xmltodict.parse(open(xml_path,encoding="utf-8").read()) 
        return the_dict
     except Exception as e:
-        print(f"Error parsing {xml_file}: {e}")
+        print(f"Error parsing {xml_path}: {e}")
         return None
 
 def process_data_folder(data_folder):
@@ -20,7 +20,7 @@ def process_data_folder(data_folder):
         subfolder_path = os.path.join(data_folder, subfolder)
         if os.path.isdir(subfolder_path):
             gamelist_path = os.path.join(subfolder_path, "gamelist.xml")
-            if os.path.exists(gamelist_path):
+            if os.path.exists(gamelist_path) and subfolder == 'arcade':
                 print(f"Processing {gamelist_path}...")
                 gamelist_dict = parse_xml_to_dict(gamelist_path)
                 if gamelist_dict:

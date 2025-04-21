@@ -7,6 +7,9 @@ of each item, and stores the vectors in a Chroma vector database using Semantic 
 
 import os
 import json
+from uuid import uuid4
+import datetime
+
 import asyncio
 from typing import List, Dict, Any, NamedTuple
 from dotenv import load_dotenv
@@ -49,7 +52,7 @@ class SKJsonVectorizer:
         
         # Create embedding service
         self.embedding_service = OpenAITextEmbedding(
-            ai_model_id="text-embedding-ada-002",
+            ai_model_id="text-embedding-3-small",
             api_key=self.api_key
         )
         
@@ -99,7 +102,7 @@ class SKJsonVectorizer:
             items = json.load(file)
         
         # Vectorize items
-        await self.vectorize_items(items)
+        await self.vectorize_items(items['gameList']['game'])
     
     async def vectorize_items(self, items: List[Dict[str, Any]]) -> None:
         """
@@ -112,40 +115,42 @@ class SKJsonVectorizer:
         
         for item in items:
             # Check if item has required fields
-            if 'id' not in item or 'description' not in item:
-                print(f"Skipping item: Missing required fields (id or description)")
+            if 'name' not in item or 'desc' not in item:
+                print(f"Skipping item: Missing required fields (name or description)")
                 continue
-            
-            # Create a text representation that includes both name and description if available
-            text = item.get('description', '')
-            if 'name' in item:
-                text = f"{item['name']}: {text}"
-            
-            # Generate embedding for the text
-            embeddings = await self.embedding_service.generate_embeddings([text])
-            
-            # Create a MemoryRecord
-            from semantic_kernel.memory.memory_record import MemoryRecord
-            record = MemoryRecord(
-                id=item['id'],
-                text=text,
-                embedding=embeddings[0],
-                description=item.get('name', ''),
-                additional_metadata=json.dumps({
-                    "category": item.get('category', ''),
-                    "price": item.get('price', 0)
-                }),
-                external_source_name="json_file",
-                is_reference=False
-            )
-            
-            # Store the record in Chroma
-            await self.memory_store.upsert(
-                collection_name=self.collection_name,
-                record=record
-            )
-            
-            print(f"Vectorized item: {item['id']}")
+            if item['desc'] and item['desc'] != '' and item['name'] and item['name'] != '':
+                # Create a text representation that includes both name and description if available
+                text = f"{item['name']}: {item['desc']}"
+                
+                # Generate embedding for the text
+                embeddings = await self.embedding_service.generate_embeddings([text])
+                
+                # Create a MemoryRecord
+                from semantic_kernel.memory.memory_record import MemoryRecord
+                record = MemoryRecord(
+                    id=str(uuid4()),
+                    text=text,
+                    embedding=embeddings[0],
+                    description=item.get('name', 'None'),
+                    additional_metadata=json.dumps({
+                        "name": item.get('name', 'None'),
+                        "genre": item.get('genre', 'None'),
+                        "players": item.get('players', 'None'),
+                        "publisher": item.get('publisher', 'None'),
+                        "developer": item.get('developer', 'None'),
+                        "releasedate": item.get('releasedate', 'None'),
+                    }),
+                    external_source_name="json_file",
+                    is_reference=False
+                )
+                
+                # Store the record in Chroma
+                await self.memory_store.upsert(
+                    collection_name=self.collection_name,
+                    record=record
+                )
+                
+                print(f"Vectorized item: {item['name']}")
         
         print("Vectorization complete!")
 
@@ -201,10 +206,10 @@ async def main():
         
         # Initialize vectorizer
         print("Initializing vectorizer...")
-        vectorizer = SKJsonVectorizer(collection_name="product_catalog")
+        vectorizer = SKJsonVectorizer(collection_name="gdata")
         
         # Check if JSON file exists
-        json_file_path = "data/sample_items.json"
+        json_file_path = "data/arcade/gamelist_test.json"
         if not os.path.exists(json_file_path):
             print(f"ERROR: JSON file not found at {json_file_path}")
             return
@@ -214,9 +219,9 @@ async def main():
         await vectorizer.vectorize_json_file(json_file_path)
         
         # Perform a sample search
-        query = "I need something for sun protection"
+        query = "a puzzle game"
         print(f"Searching for: '{query}'...")
-        results = await vectorizer.search(query)
+        results = await vectorizer.search(query,min_relevance_score=0.5)
         
         print(f"\nSearch results for: '{query}'")
         if not results:

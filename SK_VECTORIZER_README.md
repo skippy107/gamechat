@@ -1,11 +1,11 @@
 # Semantic Kernel JSON Vectorizer
 
-This module provides functionality to read items from a JSON list file, vectorize the 'description' field of each item, and store the vectors in a Chroma vector database using Semantic Kernel 1.23.
+This module provides functionality to read items from a JSON list file, vectorize the 'description' field of each item, and store the vectors in a Chroma vector database using Semantic Kernel 1.28.1.
 
 ## Prerequisites
 
 - Python 3.8+
-- Semantic Kernel 1.23
+- Semantic Kernel 1.28.1
 - OpenAI API key
 
 ## Installation
@@ -13,7 +13,7 @@ This module provides functionality to read items from a JSON list file, vectoriz
 Ensure you have the required dependencies installed:
 
 ```bash
-pip install semantic-kernel==1.23 python-dotenv
+pip install semantic-kernel==1.28.1 python-dotenv
 ```
 
 ## Environment Setup
@@ -30,7 +30,7 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 ```python
 import asyncio
-from sk_vectorizer import SKJsonVectorizer
+from sk_vectorizer import SKJsonVectorizer, SearchResult
 
 async def run_example():
     # Initialize the vectorizer with a collection name
@@ -69,7 +69,7 @@ The JSON file should contain a list of items, where each item is an object with 
 
 ### How It Works
 
-1. The module uses Semantic Kernel 1.23 with OpenAI's text-embedding-ada-002 model to generate embeddings for each item's description.
+1. The module uses Semantic Kernel 1.28.1 with OpenAI's text-embedding-ada-002 model to generate embeddings for each item's description.
 2. These embeddings are stored in a Chroma vector database, which allows for efficient similarity searches.
 3. When searching, the query is converted to an embedding and compared against the stored embeddings to find the most similar items.
 
@@ -95,7 +95,7 @@ results = await vectorizer.search(
     query="your search query",
     limit=10,  # Return up to 10 results
     min_relevance_score=0.5  # Lower threshold for relevance
-)
+)  # Returns List[SearchResult]
 ```
 
 ## Class Reference
@@ -107,9 +107,9 @@ results = await vectorizer.search(
 - `__init__(collection_name: str, persist_directory: str = 'chroma-sk')`: Initialize the vectorizer
 - `vectorize_json_file(json_file_path: str) -> None`: Vectorize items from a JSON file
 - `vectorize_items(items: List[Dict[str, Any]]) -> None`: Vectorize a list of item dictionaries
-- `search(query: str, limit: int = 5, min_relevance_score: float = 0.7) -> List[MemoryRecord]`: Search for similar items
+- `search(query: str, limit: int = 5, min_relevance_score: float = 0.7) -> List[SearchResult]`: Search for similar items
 
-### MemoryRecord
+### SearchResult
 
 A simple named tuple that represents a search result:
 

@@ -16,8 +16,7 @@ dependencies = [
     "langchain-community (>=0.3.21,<0.4.0)",
     "xmltodict (>=0.14.2,<0.15.0)",
     "langchain-chroma (>=0.2.3,<0.3.0)",
-    "semantic-kernel == 1.23"
-    #"semantic-kernel (>=1.28.1,<2.0.0)"
+    "semantic-kernel (>=1.28.1,<2.0.0)",
     "pandas (>=2.2.3,<3.0.0)"
 ]
 
